@@ -13,7 +13,53 @@ const handleValidation = (req, res, next) => {
   return next(new ApiError(422, Object.values(errors)[0], errors));
 };
 
-const normalizePhone = (value) => String(value || '').trim().replace(/[\s-]/g, '');
+const normalizePhone = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+
+  const digits = raw.replace(/\D/g, '');
+  if (!digits) return '';
+
+  if (digits.startsWith('2500') && digits.length === 13) {
+    return `+250${digits.slice(4)}`;
+  }
+  if (digits.startsWith('250') && digits.length === 12) {
+    return `+${digits}`;
+  }
+  if (digits.startsWith('0') && digits.length === 10) {
+    return `+250${digits.slice(1)}`;
+  }
+  if (digits.length === 9) {
+    return `+250${digits}`;
+  }
+
+  return `+${digits}`;
+};
+
+const phoneSearchVariants = (value) => {
+  const raw = String(value || '').trim();
+  const normalized = normalizePhone(raw);
+  const variants = new Set();
+
+  if (raw) {
+    variants.add(raw);
+    variants.add(raw.replace(/[\s-]/g, ''));
+  }
+
+  if (normalized) {
+    variants.add(normalized);
+
+    const digits = normalized.replace(/\D/g, '');
+    if (digits.startsWith('250') && digits.length === 12) {
+      const local = digits.slice(3);
+      variants.add(digits);
+      variants.add(`0${local}`);
+      variants.add(local);
+    }
+  }
+
+  return [...variants].filter(Boolean);
+};
 
 const phoneOk = (value) => /^\+?[0-9]{9,15}$/.test(normalizePhone(value));
 
@@ -94,6 +140,129 @@ const verifyResetOtpRules = [
     .withMessage('Enter the 6-digit code.')
 ];
 
+const adminRoleOk = (value) => ['farmer', 'buyer', 'super_admin'].includes(value);
+
+const adminUserCreateRules = [
+  body('name')
+    .trim()
+    .notEmpty()
+    .withMessage('Full name is required.')
+    .isLength({ max: 120 })
+    .withMessage('Full name must be at most 120 characters.'),
+  body('phone')
+    .trim()
+    .notEmpty()
+    .withMessage('Phone number is required.')
+    .custom((value) => phoneOk(value))
+    .withMessage('Enter a valid phone number.'),
+  body('email')
+    .optional({ values: 'falsy' })
+    .trim()
+    .isLength({ max: 150 })
+    .withMessage('Email must be at most 150 characters.')
+    .custom((value) => emailOk(value))
+    .withMessage('Enter a valid email address.'),
+  body('password')
+    .isString()
+    .withMessage('Password is required.')
+    .isLength({ min: 8 })
+    .withMessage('Password must be at least 8 characters.'),
+  body('role')
+    .notEmpty()
+    .withMessage('Role is required.')
+    .custom((value) => adminRoleOk(value))
+    .withMessage('Role must be farmer, buyer or super_admin.'),
+  body('district')
+    .optional({ values: 'falsy' })
+    .trim()
+    .isLength({ max: 60 })
+    .withMessage('District must be at most 60 characters.'),
+  body('sector')
+    .optional({ values: 'falsy' })
+    .trim()
+    .isLength({ max: 60 })
+    .withMessage('Sector must be at most 60 characters.')
+];
+
+const adminUserUpdateRules = [
+  body('name')
+    .trim()
+    .notEmpty()
+    .withMessage('Full name is required.')
+    .isLength({ max: 120 })
+    .withMessage('Full name must be at most 120 characters.'),
+  body('phone')
+    .trim()
+    .notEmpty()
+    .withMessage('Phone number is required.')
+    .custom((value) => phoneOk(value))
+    .withMessage('Enter a valid phone number.'),
+  body('email')
+    .optional({ values: 'falsy' })
+    .trim()
+    .isLength({ max: 150 })
+    .withMessage('Email must be at most 150 characters.')
+    .custom((value) => emailOk(value))
+    .withMessage('Enter a valid email address.'),
+  body('role')
+    .optional()
+    .custom((value) => adminRoleOk(value))
+    .withMessage('Role must be farmer, buyer or super_admin.'),
+  body('district')
+    .optional({ values: 'falsy' })
+    .trim()
+    .isLength({ max: 60 })
+    .withMessage('District must be at most 60 characters.'),
+  body('sector')
+    .optional({ values: 'falsy' })
+    .trim()
+    .isLength({ max: 60 })
+    .withMessage('Sector must be at most 60 characters.'),
+  body('enabled')
+    .optional()
+    .isBoolean()
+    .withMessage('Enabled must be true or false.')
+];
+
+const adminProfileRules = [
+  body('name')
+    .trim()
+    .notEmpty()
+    .withMessage('Full name is required.')
+    .isLength({ max: 120 })
+    .withMessage('Full name must be at most 120 characters.'),
+  body('phone')
+    .trim()
+    .notEmpty()
+    .withMessage('Phone number is required.')
+    .custom((value) => phoneOk(value))
+    .withMessage('Enter a valid phone number.'),
+  body('email')
+    .optional({ values: 'falsy' })
+    .trim()
+    .isLength({ max: 150 })
+    .withMessage('Email must be at most 150 characters.')
+    .custom((value) => emailOk(value))
+    .withMessage('Enter a valid email address.')
+];
+
+const adminPasswordRules = [
+  body('currentPassword')
+    .notEmpty()
+    .withMessage('Current password is required.'),
+  body('newPassword')
+    .isString()
+    .withMessage('New password is required.')
+    .isLength({ min: 8 })
+    .withMessage('New password must be at least 8 characters.')
+];
+
+const rolePermissionsRules = [
+  body('permissionIds')
+    .isArray()
+    .withMessage('Permission ids must be an array.')
+];
+
 const resetPasswordRules = [
   body('resetToken')
     .trim()
@@ -116,9 +285,16 @@ module.exports = {
   forgotPasswordRules,
   verifyResetOtpRules,
   resetPasswordRules,
+  adminUserCreateRules,
+  adminUserUpdateRules,
+  adminProfileRules,
+  adminPasswordRules,
+  rolePermissionsRules,
   normalizePhone,
+  phoneSearchVariants,
   phoneOk,
   emailOk,
   passwordOk,
-  roleOk
+  roleOk,
+  adminRoleOk
 };

@@ -4,6 +4,7 @@ const morgan = require('morgan');
 require('dotenv').config();
 
 const routes = require('./routes');
+const { ensureDatabase } = require('./db/bootstrap');
 const { notFound, errorHandler } = require('./middleware/errorHandler');
 
 const app = express();
@@ -20,6 +21,15 @@ const corsOptions = clientOrigins.includes('*')
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '1mb' }));
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+
+app.use(async (req, res, next) => {
+  try {
+    await ensureDatabase();
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
 
 app.use('/api', routes);
 

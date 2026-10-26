@@ -3,14 +3,14 @@ const bcrypt = require('bcryptjs');
 const db = require('../db');
 const { signToken, signResetToken, verifyResetToken } = require('../utils/jwt');
 const { asyncHandler, ok, ApiError } = require('../utils/http');
-const { normalizePhone } = require('../utils/validate');
+const { normalizePhone, phoneSearchVariants } = require('../utils/validate');
 
 const RESET_OTP_TTL_MINUTES = 10;
 const GENERIC_RESET_MESSAGE =
   'If an account exists for that email, a 6-digit reset code has been sent.';
 
 const PUBLIC_COLUMNS =
-  'id, full_name, phone, email, role, district, sector, created_at, updated_at';
+  'id, full_name, phone, email, role, district, sector, enabled, account_non_locked, last_login_at, created_at, updated_at';
 
 const toPublicUser = (row) => ({
   id: row.id,
@@ -20,6 +20,9 @@ const toPublicUser = (row) => ({
   role: row.role,
   district: row.district,
   sector: row.sector,
+  enabled: row.enabled,
+  account_non_locked: row.account_non_locked,
+  last_login_at: row.last_login_at,
   created_at: row.created_at,
   updated_at: row.updated_at
 });
@@ -47,9 +50,10 @@ const register = asyncHandler(async (req, res) => {
   const normalizedPhone = normalizePhone(phone);
   const normalizedEmail = cleanOptional(email);
 
-  const existingPhone = await db.query('SELECT id FROM users WHERE phone = $1', [
-    normalizedPhone
-  ]);
+  const existingPhone = await db.query(
+    'SELECT id FROM users WHERE phone = ANY($1::text[])',
+    [phoneSearchVariants(normalizedPhone)]
+  );
   if (existingPhone.rows.length) {
     throw new ApiError(409, 'This phone number is already registered.', {
       phone: 'This phone number is already registered.'
@@ -99,8 +103,12 @@ const login = asyncHandler(async (req, res) => {
   const normalizedPhone = normalizePhone(phone);
 
   const { rows } = await db.query(
-    `SELECT ${PUBLIC_COLUMNS}, password_hash FROM users WHERE phone = $1`,
-    [normalizedPhone]
+    `SELECT ${PUBLIC_COLUMNS}, password_hash
+       FROM users
+      WHERE phone = ANY($1::text[])
+      ORDER BY (phone = $2) DESC
+      LIMIT 1`,
+    [phoneSearchVariants(normalizedPhone), normalizedPhone]
   );
 
   const found = rows[0];
@@ -113,7 +121,23 @@ const login = asyncHandler(async (req, res) => {
     throw new ApiError(401, 'Invalid phone number or password.');
   }
 
-  const user = toPublicUser(found);
+  if (!found.enabled) {
+    throw new ApiError(403, 'This account has been disabled. Contact the platform administrator.');
+  }
+
+  if (!found.account_non_locked) {
+    throw new ApiError(403, 'This account is locked. Contact the platform administrator.');
+  }
+
+  const { rows: updatedRows } = await db.query(
+    `UPDATE users
+        SET last_login_at = NOW(), updated_at = NOW()
+      WHERE id = $1
+      RETURNING ${PUBLIC_COLUMNS}`,
+    [found.id]
+  );
+
+  const user = toPublicUser(updatedRows[0] || found);
   const token = signToken(user);
 
   return ok(res, { token, user });
