@@ -11,8 +11,12 @@ CREATE TABLE IF NOT EXISTS users (
   email             VARCHAR(150) UNIQUE,
   password_hash     TEXT NOT NULL,
   role              VARCHAR(20) NOT NULL CHECK (role IN ('farmer','buyer','super_admin')),
+  province          VARCHAR(60),
   district          VARCHAR(60),
   sector            VARCHAR(60),
+  cell              VARCHAR(60),
+  village           VARCHAR(60),
+  village_code      VARCHAR(20),
   enabled           BOOLEAN NOT NULL DEFAULT TRUE,
   account_non_locked BOOLEAN NOT NULL DEFAULT TRUE,
   last_login_at     TIMESTAMPTZ,
@@ -24,6 +28,10 @@ CREATE TABLE IF NOT EXISTS users (
 
 -- Existing databases were created with a narrower role column and no status
 -- columns; bring them in line without dropping any data.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS province VARCHAR(60);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS cell VARCHAR(60);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS village VARCHAR(60);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS village_code VARCHAR(20);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS account_non_locked BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
@@ -107,4 +115,5 @@ CREATE INDEX IF NOT EXISTS idx_requests_crop      ON buyer_requests(crop_name);
 CREATE INDEX IF NOT EXISTS idx_messages_receiver  ON messages(receiver_id);
 CREATE INDEX IF NOT EXISTS idx_users_role         ON users(role);
 CREATE INDEX IF NOT EXISTS idx_users_enabled      ON users(enabled);
+CREATE INDEX IF NOT EXISTS idx_users_village_code ON users(village_code);
 CREATE INDEX IF NOT EXISTS idx_role_permissions_role ON role_permissions(role_id);

@@ -2,6 +2,8 @@ const { Router } = require('express');
 const db = require('../db');
 const authRoutes = require('./authRoutes');
 const adminRoutes = require('./adminRoutes');
+const locationRoutes = require('./locationRoutes');
+const harvestRoutes = require('./harvestRoutes');
 
 const router = Router();
 
@@ -21,5 +23,7 @@ router.get('/health', async (req, res) => {
 
 router.use('/auth', authRoutes);
 router.use('/admin', adminRoutes);
+router.use('/locations', locationRoutes);
+router.use('/harvests', harvestRoutes);
 
 module.exports = router;

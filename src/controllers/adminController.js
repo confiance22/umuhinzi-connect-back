@@ -12,8 +12,12 @@ const ADMIN_USER_SELECT = `
   u.phone,
   u.email,
   u.role,
+  u.province,
   u.district,
   u.sector,
+  u.cell,
+  u.village,
+  u.village_code,
   u.enabled,
   u.account_non_locked,
   u.last_login_at,
@@ -56,8 +60,12 @@ const toAdminUser = (row) => {
     roles: roleObject ? [roleObject] : [],
     roleId: row.role_id,
     roleName: row.role_name,
+    province: row.province,
     district: row.district,
     sector: row.sector,
+    cell: row.cell,
+    village: row.village,
+    village_code: row.village_code,
     enabled: row.enabled,
     account_non_locked: row.account_non_locked,
     accountNonLocked: row.account_non_locked,
@@ -442,7 +450,7 @@ const updateSelf = asyncHandler(async (req, res) => {
     `UPDATE users
         SET full_name = $1, phone = $2, email = $3, updated_at = NOW()
       WHERE id = $4
-      RETURNING id, full_name, phone, email, role, district, sector,
+      RETURNING id, full_name, phone, email, role, province, district, sector, cell, village, village_code,
                 enabled, account_non_locked, last_login_at, created_at, updated_at`,
     [name, phone, email, req.user.id]
   );

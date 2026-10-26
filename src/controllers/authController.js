@@ -4,13 +4,14 @@ const db = require('../db');
 const { signToken, signResetToken, verifyResetToken } = require('../utils/jwt');
 const { asyncHandler, ok, ApiError } = require('../utils/http');
 const { normalizePhone, phoneSearchVariants } = require('../utils/validate');
+const { resolveVillage } = require('../services/locations');
 
 const RESET_OTP_TTL_MINUTES = 10;
 const GENERIC_RESET_MESSAGE =
   'If an account exists for that email, a 6-digit reset code has been sent.';
 
 const PUBLIC_COLUMNS =
-  'id, full_name, phone, email, role, district, sector, enabled, account_non_locked, last_login_at, created_at, updated_at';
+  'id, full_name, phone, email, role, province, district, sector, cell, village, village_code, enabled, account_non_locked, last_login_at, created_at, updated_at';
 
 const toPublicUser = (row) => ({
   id: row.id,
@@ -18,8 +19,12 @@ const toPublicUser = (row) => ({
   phone: row.phone,
   email: row.email,
   role: row.role,
+  province: row.province,
   district: row.district,
   sector: row.sector,
+  cell: row.cell,
+  village: row.village,
+  village_code: row.village_code,
   enabled: row.enabled,
   account_non_locked: row.account_non_locked,
   last_login_at: row.last_login_at,
@@ -34,7 +39,7 @@ const cleanOptional = (value) => {
 
 /**
  * POST /api/auth/register
- * Body: full_name, phone, email?, password, role, district?, sector?
+ * Body: full_name, phone, email?, password, role, village_code
  */
 const register = asyncHandler(async (req, res) => {
   const {
@@ -43,12 +48,12 @@ const register = asyncHandler(async (req, res) => {
     email,
     password,
     role,
-    district,
-    sector
+    village_code
   } = req.body;
 
   const normalizedPhone = normalizePhone(phone);
   const normalizedEmail = cleanOptional(email);
+  const location = resolveVillage(village_code);
 
   const existingPhone = await db.query(
     'SELECT id FROM users WHERE phone = ANY($1::text[])',
@@ -74,8 +79,11 @@ const register = asyncHandler(async (req, res) => {
   const password_hash = await bcrypt.hash(password, 10);
 
   const { rows } = await db.query(
-    `INSERT INTO users (full_name, phone, email, password_hash, role, district, sector)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO users (
+       full_name, phone, email, password_hash, role,
+       province, district, sector, cell, village, village_code
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      RETURNING ${PUBLIC_COLUMNS}`,
     [
       String(full_name).trim(),
@@ -83,8 +91,12 @@ const register = asyncHandler(async (req, res) => {
       normalizedEmail,
       password_hash,
       role,
-      cleanOptional(district),
-      cleanOptional(sector)
+      location.province,
+      location.district,
+      location.sector,
+      location.cell,
+      location.village,
+      location.village_code
     ]
   );
 
@@ -284,11 +296,105 @@ const resetPassword = asyncHandler(async (req, res) => {
   return ok(res, { message: 'Password updated successfully.' });
 });
 
+/**
+ * PUT /api/auth/profile
+ * Update the signed-in user's own identity fields.
+ */
+const updateProfile = asyncHandler(async (req, res) => {
+  const fullName = String(req.body.name || req.body.full_name || '').trim();
+  const phone = normalizePhone(req.body.phone);
+  const email = cleanOptional(req.body.email)?.toLowerCase() || null;
+
+  const { rows: conflicts } = await db.query(
+    `SELECT id, phone, email
+       FROM users
+      WHERE (phone = ANY($1::text[]) OR ($2::text IS NOT NULL AND LOWER(email) = $2))
+        AND id <> $3`,
+    [phoneSearchVariants(phone), email, req.user.id]
+  );
+
+  if (conflicts.length) {
+    const phoneTaken = conflicts.some((row) =>
+      phoneSearchVariants(phone).includes(row.phone)
+    );
+    throw new ApiError(
+      409,
+      phoneTaken
+        ? 'This phone number is already registered.'
+        : 'This email address is already registered.',
+      phoneTaken
+        ? { phone: 'This phone number is already registered.' }
+        : { email: 'This email address is already registered.' }
+    );
+  }
+
+  const { rows } = await db.query(
+    `UPDATE users
+        SET full_name = $1, phone = $2, email = $3, updated_at = NOW()
+      WHERE id = $4
+      RETURNING ${PUBLIC_COLUMNS}`,
+    [fullName, phone, email, req.user.id]
+  );
+
+  if (!rows.length) throw new ApiError(404, 'Account not found.');
+  const user = toPublicUser(rows[0]);
+
+  return ok(res, {
+    user: {
+      ...user,
+      name: user.full_name,
+      username: user.phone,
+      accountNonLocked: user.account_non_locked,
+      createdAt: user.created_at
+    }
+  });
+});
+
+/**
+ * POST /api/auth/password
+ * Change the signed-in user's password.
+ */
+const changePassword = asyncHandler(async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+
+  const { rows } = await db.query(
+    'SELECT password_hash FROM users WHERE id = $1',
+    [req.user.id]
+  );
+  const account = rows[0];
+  if (!account) throw new ApiError(404, 'Account not found.');
+
+  const matches = await bcrypt.compare(currentPassword, account.password_hash);
+  if (!matches) {
+    throw new ApiError(422, 'Your current password is incorrect.', {
+      currentPassword: 'Your current password is incorrect.'
+    });
+  }
+
+  if (currentPassword === newPassword) {
+    throw new ApiError(422, 'Choose a password you have not used before.', {
+      newPassword: 'Choose a different password.'
+    });
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, 10);
+  await db.query(
+    `UPDATE users
+        SET password_hash = $1, updated_at = NOW()
+      WHERE id = $2`,
+    [passwordHash, req.user.id]
+  );
+
+  return ok(res, { message: 'Password updated successfully.' });
+});
+
 module.exports = {
   register,
   login,
   me,
   forgotPassword,
   verifyPasswordResetOtp,
-  resetPassword
+  resetPassword,
+  updateProfile,
+  changePassword
 };
