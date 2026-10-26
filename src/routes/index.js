@@ -4,6 +4,9 @@ const authRoutes = require('./authRoutes');
 const adminRoutes = require('./adminRoutes');
 const locationRoutes = require('./locationRoutes');
 const harvestRoutes = require('./harvestRoutes');
+const publicRoutes = require('./publicRoutes');
+const marketPriceRoutes = require('./marketPriceRoutes');
+const pageRoutes = require('./pageRoutes');
 
 const router = Router();
 
@@ -21,9 +24,12 @@ router.get('/health', async (req, res) => {
   }
 });
 
+router.use('/public', publicRoutes);
 router.use('/auth', authRoutes);
 router.use('/admin', adminRoutes);
 router.use('/locations', locationRoutes);
 router.use('/harvests', harvestRoutes);
+router.use('/market-prices', marketPriceRoutes);
+router.use('/pages', pageRoutes);
 
 module.exports = router;

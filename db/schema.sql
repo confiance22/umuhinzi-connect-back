@@ -117,3 +117,43 @@ CREATE INDEX IF NOT EXISTS idx_users_role         ON users(role);
 CREATE INDEX IF NOT EXISTS idx_users_enabled      ON users(enabled);
 CREATE INDEX IF NOT EXISTS idx_users_village_code ON users(village_code);
 CREATE INDEX IF NOT EXISTS idx_role_permissions_role ON role_permissions(role_id);
+
+-- Add optional harvest classification columns
+ALTER TABLE harvests ADD COLUMN IF NOT EXISTS category VARCHAR(40) DEFAULT 'vegetables';
+ALTER TABLE harvests ADD COLUMN IF NOT EXISTS variety VARCHAR(80);
+ALTER TABLE harvests ADD COLUMN IF NOT EXISTS lot VARCHAR(20);
+CREATE INDEX IF NOT EXISTS idx_harvests_category ON harvests(category);
+
+-- Market prices table ----------------------------------------------------------
+CREATE TABLE IF NOT EXISTS market_prices (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  crop_name       VARCHAR(80) NOT NULL,
+  crop_key        VARCHAR(100),
+  market          VARCHAR(100) NOT NULL,
+  district        VARCHAR(60) NOT NULL,
+  unit            VARCHAR(20) NOT NULL DEFAULT 'kg',
+  price           NUMERIC(10,2) NOT NULL CHECK (price >= 0),
+  previous_price  NUMERIC(10,2),
+  change_percent  NUMERIC(5,2) DEFAULT 0,
+  series          JSONB DEFAULT '[]'::jsonb,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_market_prices_crop     ON market_prices(crop_name);
+CREATE INDEX IF NOT EXISTS idx_market_prices_district ON market_prices(district);
+CREATE INDEX IF NOT EXISTS idx_market_prices_market   ON market_prices(market);
+
+-- Dynamic pages content table --------------------------------------------------
+CREATE TABLE IF NOT EXISTS pages (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug        VARCHAR(60) UNIQUE NOT NULL,
+  title       VARCHAR(150) NOT NULL,
+  content     JSONB NOT NULL DEFAULT '{}'::jsonb,
+  meta        JSONB DEFAULT '{}'::jsonb,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_pages_slug ON pages(slug);
+
