@@ -1,0 +1,11 @@
+{
+  "installCommand": "npm install",
+  "functions": {
+    "api/index.js": {
+      "maxDuration": 60
+    }
+  },
+  "routes": [
+    { "src": "/(.*)", "dest": "api/index.js" }
+  ]
+}
