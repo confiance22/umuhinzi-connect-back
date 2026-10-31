@@ -1,7 +1,7 @@
 const { asyncHandler, ok } = require('../utils/http');
 const locations = require('../services/locations');
 
-const cacheable = (res) => res.set('Cache-Control', 'public, max-age=86400');
+const cacheable = (res) => res.set('Cache-Control', 'no-store');
 
 const getProvinces = asyncHandler(async (req, res) => {
   cacheable(res);
